@@ -55,6 +55,7 @@ int main() {
     thread1.join();
     thread2.join();
     
+    
     sleep(10);
 
     // ファイルを閉じる
