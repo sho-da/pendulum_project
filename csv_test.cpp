@@ -16,7 +16,10 @@ int span2 = 1;//5/2; // msec
 
 std::ofstream csvFile; // CSVファイルに書き込むためのファイルストリーム
 
-void count1() {
+bool stopThread1 = false;
+bool stopThread2 = false;
+
+void count1(!stopThread1) {
     while(){
     x1 = x1 + 1;
     t1 = t1 + span1;
@@ -32,6 +35,7 @@ void count1() {
 }
 
 void count2() {
+    while(!stopThread2){
     x2 = 2 * x2;
     t2 = t2 + span2;
         
@@ -42,7 +46,7 @@ void count2() {
     std::chrono::seconds dura2(span2);
     //std::chrono::milliseconds dura2(static_cast<int>(span2));
     std::this_thread::sleep_for(dura2);
-    
+    }
 }
 
 int main() {
@@ -55,8 +59,9 @@ int main() {
     thread1.join();
     thread2.join();
     
-    
     sleep(10);
+    stopThread1 = true;
+    stopThread2 = true;
 
     // ファイルを閉じる
     csvFile.close();
