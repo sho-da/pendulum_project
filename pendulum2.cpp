@@ -139,6 +139,7 @@ float Gain[4] = {29.30755259, 4.80340051, 0.02968736, 0.3196894};
 //=========================================================
 void rotary_encoder()
 {
+  while(1){
     if (enc_syn == 1)
     {
         static int code;
@@ -151,6 +152,7 @@ void rotary_encoder()
         std::this_thread::sleep_for(dura1);
         return;
     }
+  }
 }
 
 //=========================================================
@@ -159,6 +161,7 @@ void rotary_encoder()
 //=========================================================
 void update_theta(int bus_acc, int bus_gyr)
 {
+  while(1){
     if (update_theta_syn_flag == 0)
     {
         return;
@@ -225,6 +228,7 @@ void update_theta(int bus_acc, int bus_gyr)
     enc_syn = 1;
     std::chrono::milliseconds dura2(th1_dura);
     std::this_thread::sleep_for(dura2);
+  }
 }
 
 //=========================================================
