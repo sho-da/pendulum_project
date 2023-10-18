@@ -59,8 +59,8 @@ int main() {
     stopThread1 = true;
     stopThread2 = true;
 
-    thread1.join();
-    thread2.join();
+    //thread1.join();
+    //thread2.join();
     
 
     // ファイルを閉じる
