@@ -56,7 +56,7 @@ float pre_theta2 = 0;
 // Update rate
 float theta_update_freq = 400; // Hz
 float theta_update_interval = 1.0f / theta_update_freq;
-int th1_dura = 1000 * 1.0f / theta_update_freq; // msec
+int th1_dura = 1000 * 1.0f / theta_update_freq;
 // State vector
 //[[theta(degree)], [offset of theta_dot(degree/sec)]]
 float theta_data_predict[2][1];
@@ -119,7 +119,8 @@ float voltage_variance = voltage_error * voltage_error;
 
 //=========================================================
 // Motor control variables
-int feedback_rate = 10000; // 0.01; //sec
+float feedback_rate = 0.01; //sec
+int feedback_dura = 10; //msec
 float motor_value = 0;
 int pwm_duty = 0;
 int motor_direction = 1;
@@ -139,7 +140,6 @@ float Gain[4] = {29.30755259, 4.80340051, 0.02968736, 0.3196894};
 //=========================================================
 void rotary_encoder()
 {
-  while(1){
     if (enc_syn == 1)
     {
         static int code;
@@ -152,7 +152,6 @@ void rotary_encoder()
         std::this_thread::sleep_for(dura1);
         return;
     }
-  }
 }
 
 //=========================================================
@@ -161,7 +160,6 @@ void rotary_encoder()
 //=========================================================
 void update_theta(int bus_acc, int bus_gyr)
 {
-  while(1){
     if (update_theta_syn_flag == 0)
     {
         return;
@@ -228,7 +226,6 @@ void update_theta(int bus_acc, int bus_gyr)
     enc_syn = 1;
     std::chrono::milliseconds dura2(th1_dura);
     std::this_thread::sleep_for(dura2);
-  }
 }
 
 //=========================================================
@@ -530,7 +527,7 @@ int main()
         // start the angle update process
         update_theta_syn_flag = 1;
         // wait
-        std::chrono::microseconds dura3(feedback_rate);
+        std::chrono::milliseconds dura3(feedback_dura);
         std::this_thread::sleep_for(dura3);
     }
     //======10000//=====================================

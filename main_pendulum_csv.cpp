@@ -1,6 +1,9 @@
+// compile "g++ -o pendulum_test pendulum_test.cpp -pthread -lpigpiod_if2 -lrt"
+
 #include "pigpiod_if2.h"
 #include <cmath>
 #include <unistd.h>
+#include <fstream>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -10,34 +13,49 @@
 
 #include "matrix_operations.h"
 #include "sensor.h"
-#include "signal_handler.h"
-
 
 std::thread thread1;
 std::thread thread2;
+std::thread thread_csv;
 int enc_syn = 1;
 int update_theta_syn_flag = 1;
+bool stopThread1 = false;
+bool stopThread2 = false;
+bool stopThread_csv = false;
+
+
+std::ofstream csvFile;
+float time_csv=0;
+float theta1_csv=0;
+float theta2_csv=0;
+float theta1dot_csv=0;
+
+float theta1_kalman_csv=0;
+float theta2_kalman_csv=0;
+float theta1dot_kalman_csv=0;
+
+float motor_csv;
 
 //=========================================================
 // Port Setting
-extern int pi;
+int pi;
 const int ACC_ADDR = 0x19;
 const int GYR_ADDR = 0x69;
 const int pin1 = 24; // to A
 const int pin2 = 23; // to B
 
-extern const int IN1 = 6;  // Motor driver input 1
-extern const int IN2 = 5;  // Motor driver input 2
+const int IN1 = 6;  // Motor driver input 1
+const int IN2 = 5;  // Motor driver input 2
 const int PWM = 12; // Motor driver PWM input
 
-extern const int LED_Y = 17;
-extern const int LED_R = 22;
-extern const int LED_G = 27;
+const int LED_Y = 17;
+const int LED_R = 22;
+const int LED_G = 27;
 
 //=========================================================
 // Accelerometer and gyro statistical data
 int sample_num = 100;
-float meas_interval = 10000;    // us micro seconds
+float meas_interval = 10000; // usec
 float theta_mean;
 float theta_variance;
 float theta_dot_mean;
@@ -56,7 +74,7 @@ float pre_theta2 = 0;
 // Update rate
 float theta_update_freq = 400; // Hz
 float theta_update_interval = 1.0f / theta_update_freq;
-int th1_dura = 1000 * 1.0f / theta_update_freq; // msec
+int th1_dura = 2500; // usec
 // State vector
 //[[theta(degree)], [offset of theta_dot(degree/sec)]]
 float theta_data_predict[2][1];
@@ -119,7 +137,8 @@ float voltage_variance = voltage_error * voltage_error;
 
 //=========================================================
 // Motor control variables
-int feedback_rate = 10000; // 0.01; //sec
+float feedback_rate = 0.01; 
+int feedback_dura = 10000; //usec
 float motor_value = 0;
 int pwm_duty = 0;
 int motor_direction = 1;
@@ -139,6 +158,7 @@ float Gain[4] = {29.30755259, 4.80340051, 0.02968736, 0.3196894};
 //=========================================================
 void rotary_encoder()
 {
+  while(!stopThread1){      
     if (enc_syn == 1)
     {
         static int code;
@@ -147,10 +167,11 @@ void rotary_encoder()
         // update the encoder value
         int value = -1 * table[code];
         encoder_value += value;
+        theta2_csv = encoder_value * (3.14f / 200);
         std::chrono::microseconds dura1(rotary_encoder_update_rate);
         std::this_thread::sleep_for(dura1);
-        return;
-    }
+    }else{}
+  }
 }
 
 //=========================================================
@@ -159,18 +180,19 @@ void rotary_encoder()
 //=========================================================
 void update_theta(int bus_acc, int bus_gyr)
 {
-    if (update_theta_syn_flag == 0)
+  while(!stopThread2){
+    if (update_theta_syn_flag == 1)
     {
-        return;
-    }
     // detach the rotary encoder polling
     enc_syn = 0;
 
     // measurement data
     float y = get_acc_data(pi, bus_acc); // degree
+    theta1_csv=y* 3.14f / 180;
 
     // input data
     float theta_dot_gyro = get_gyr_data(pi, bus_gyr); // degree/sec
+    theta1dot_csv=theta_dot_gyro* 3.14f / 180;
 
     // calculate Kalman gain: G = P'C^T(W+CP'C^T)^-1
     float P_CT[2][1] = {};
@@ -223,8 +245,41 @@ void update_theta(int bus_acc, int bus_gyr)
 
     // attach a timer for the rotary encoder (40 kHz)
     enc_syn = 1;
-    std::chrono::milliseconds dura2(th1_dura);
+
+    // std::cout << "update_theta"  << std::endl;
+
+    std::chrono::microseconds dura2(th1_dura);
     std::this_thread::sleep_for(dura2);
+    }else{} 
+  }
+}
+
+void csv_wirte(){
+    while(!stopThread_csv){
+        csvFile << time_csv << "," << theta1_csv << "," << theta2_csv << "," << theta1dot_csv << "," << theta1_kalman_csv << "," << theta2_kalman_csv << "," << theta1dot_kalman_csv << "," << motor_csv << std::endl;
+        time_csv=time_csv+10; //msec
+        std::chrono::milliseconds dura_csv(100);
+        std::this_thread::sleep_for(dura_csv);
+    }
+}
+
+void signalHandler(int signum) {
+    if (signum == SIGINT) {
+        std::cout << "Ctrl+Cが検出されました。スレッドを終了し、ファイルを閉じます。" << std::endl;
+        set_mode(pi, LED_R, PI_OUTPUT);
+        set_mode(pi, LED_Y, PI_OUTPUT);
+        set_mode(pi, LED_G, PI_OUTPUT);
+        set_mode(pi, IN1, PI_OUTPUT);
+        set_mode(pi, IN2, PI_OUTPUT);
+        gpio_write(pi, IN1, 0);
+        gpio_write(pi, IN2, 0);
+        gpio_write(pi, LED_R, 0);
+        gpio_write(pi, LED_Y, 0);
+        gpio_write(pi, LED_G, 0);
+        csvFile.close();
+        pigpio_stop(pi);
+        exit(signum);
+    }
 }
 
 //=========================================================
@@ -232,11 +287,9 @@ void update_theta(int bus_acc, int bus_gyr)
 //=========================================================
 int main()
 {
-    // Ctrl+Cによる中断をキャッチするためのシグナルハンドラを設定
+    csvFile.open("output.csv"); // ファイルを開く
     std::signal(SIGINT, signalHandler);
-    // Ctrl+Z
-    std::signal(SIGTSTP, signalHandler);
-
+    csvFile << "time" << "," << "theta1" << "," << "theta2" << "," << "theta1_dot" << "," << "theta1_kal" << "," << "theta2_kal" << "," << "theta1dot_kal" << "," << "motor_value" << std::endl;
     pi = pigpio_start(NULL, NULL);
     int bus_acc = i2c_open(pi, 1, ACC_ADDR, 0);
     int bus_gyr = i2c_open(pi, 1, GYR_ADDR, 0);
@@ -371,8 +424,10 @@ int main()
     //-------------------------------------------
     thread1 = std::thread(rotary_encoder);
     thread2 = std::thread(update_theta, bus_acc, bus_gyr);
-    thread1.join();
-    thread2.join();
+    thread_csv = std::thread(csv_wirte);
+    thread1.detach();
+    thread2.detach();
+    thread_csv.detach();
 
     //-------------------------------------------
     // initialization done
@@ -389,6 +444,8 @@ int main()
 
     while (1)
     {
+        // std::cout << "----mainloop----" << std::endl;
+        
         // stop theta update process
         update_theta_syn_flag = 0;
 
@@ -405,7 +462,10 @@ int main()
         y[1][0] = (theta1_dot_temp - theta_data[1][0]) * 3.14f / 180;
         y[2][0] = encoder_value * (2 * 3.14f) / (4 * rotary_encoder_resolution);
         y[3][0] = (y[2][0] - pre_theta2) / feedback_rate;
-
+        theta1_kalman_csv=y[0][0];
+        theta1dot_kalman_csv=y[1][0];
+        theta2_kalman_csv=y[2][0];
+        
         // calculate Kalman gain: G = P'C^T(W+CP'C^T)^-1
         mat_tran(C_x[0], tran_C_x[0], 4, 4);                            // C^T
         mat_mul(P_x_predict[0], tran_C_x[0], P_CT[0], 4, 4, 4, 4);      // P'C^T
@@ -419,12 +479,12 @@ int main()
         mat_sub(y[0], C_x_x[0], delta_y[0], 4, 1);                // y-Cx'
         mat_mul(G[0], delta_y[0], delta_x[0], 4, 4, 4, 1);        // G(y-Cx')
         mat_add(x_data_predict[0], delta_x[0], x_data[0], 4, 1);  // x'+G(y-Cx')
-
+        
         // calculate covariance matrix: P=(I-GC)P'
         mat_mul(G[0], C_x[0], GC[0], 4, 4, 4, 4);              // GC
         mat_sub(I4[0], GC[0], I4_GC[0], 4, 4);                 // I-GC
         mat_mul(I4_GC[0], P_x_predict[0], P_x[0], 4, 4, 4, 4); //(I-GC)P'
-
+        
         // predict the next step data: x'=Ax+Bu
         Vin = motor_value;
         if (motor_value > 3.3f)
@@ -447,7 +507,7 @@ int main()
         mat_mul(B_x[0], tran_B_x[0], BBT[0], 4, 1, 1, 4);       // BB^T
         mat_mul_const(BBT[0], voltage_variance, BUBT[0], 4, 4); // BUB^T
         mat_add(APAT[0], BUBT[0], P_x_predict[0], 4, 4);        // APA^T+BUB^T
-
+        
         //---------------------------------------
         // Motor control
         //---------------------------------------
@@ -459,7 +519,7 @@ int main()
         {
             motor_value += Gain[i] * x_data[i][0];
         }
-
+        motor_csv = motor_value;
         // offset
         if (motor_value > 0)
         {
@@ -469,6 +529,7 @@ int main()
         {
             motor_value -= motor_offset;
         }
+        //std::cout << "motor_value:" << motor_value << std::endl;
 
         // calculate PWM pulse width
         pwm_duty = int(motor_value * 100.0f / 3.3f);
@@ -526,9 +587,10 @@ int main()
         // start the angle update process
         update_theta_syn_flag = 1;
         // wait
-        std::chrono::microseconds dura3(feedback_rate);
+        std::chrono::microseconds dura3(feedback_dura);
         std::this_thread::sleep_for(dura3);
     }
+    csvFile.close();
     //======10000//=====================================
     // Main loop (end)
     //===========================================
