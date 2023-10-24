@@ -43,7 +43,8 @@ while True:
                 
                 # Prepare to execute cleanup script and run the codes
                 ABORT_CMD2 = "sudo /home/ubuntu/PENDULUM_CLEANUP"
-                subprocess.run(ABORT_CMD2, shell=True)
+                for i in range(5):
+                    subprocess.run(ABORT_CMD2, shell=True)
                 
                 print("-------Control END------\n")
                 CODE_EXEC_FLAG = False
@@ -56,8 +57,8 @@ while True:
                 # C++コードをバックグラウンドで実行。そのためにsubprocess.Popenを使用
                 EXEC_CMD = "sudo /home/ubuntu/PENDULUM"
                 exec_process = subprocess.Popen(EXEC_CMD, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                print(exec_process.pid)
-                
+                GPIO.wait_for_edge(SW2, GPIO.RISING)
+                time.sleep(1)
                 print("-------Control Executed------\n")
                 CODE_EXEC_FLAG = True
                 break
@@ -71,14 +72,14 @@ while True:
                 subprocess.run("sudo shutdown -h now", shell=True)
                 break
 
-        elif not sw1_status and sw2_status:
-            sw_timer = sw_timer + 1
-            if sw1_timer >= 10:
-                COMPILE_CMD1 = "g++ -o /home/ubuntu/PENDULUM /home/ubuntu/pendulum_project/main_pendulum.cpp -lpigpiod_if2 -lrt -pthread"
-                COMPILE_CMD2 = "g++ -o /home/ubuntu/PENDULUM_CLEANUP /home/ubuntu/pendulum_project/cleanup.cpp -lpigpiod_if2 -lrt"
-                subprocess.run(COMPILE_CMD1, shell=True)
-                subprocess.run(COMPILE_CMD2, shell=True)
-                break
+        # elif not sw1_status and sw2_status:
+        #    sw_timer = sw_timer + 1
+        #    if sw1_timer >= 10:
+        #        COMPILE_CMD1 = "g++ -o /home/ubuntu/PENDULUM /home/ubuntu/pendulum_project/main_pendulum.cpp -lpigpiod_if2 -lrt -pthread"
+        #        COMPILE_CMD2 = "g++ -o /home/ubuntu/PENDULUM_CLEANUP /home/ubuntu/pendulum_project/cleanup.cpp -lpigpiod_if2 -lrt"
+        #        subprocess.run(COMPILE_CMD1, shell=True)
+        #        subprocess.run(COMPILE_CMD2, shell=True)
+        #        break
         
         # (sw1_status==1 and sw2_status==1) or (sw1_status==0 and sw2_status==1)
         else:
